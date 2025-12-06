@@ -1,6 +1,14 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List
+import logging
+
+# Konfigurasi logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+)
+LOGGER = logging.getLogger(__name__)
 
 # === 0. DATA MODEL ===
 @dataclass
@@ -12,12 +20,27 @@ class Mahasiswa:
 
 # === 1. ABSTRAKSI (Langkah 2: Implementasi DIP/OCP) ===
 class IValidationRule(ABC):
-    """
-    Kontrak: Semua aturan validasi harus memiliki method validate
+    """Interface untuk aturan validasi registrasi mahasiswa.
+
+    Kontrak: Semua aturan validasi harus mengimplementasikan method validate
     yang menerima data mahasiswa dan mengembalikan boolean.
+
+    Example:
+        >>> class CustomRule(IValidationRule):
+        ...     def validate(self, mhs: Mahasiswa) -> bool:
+        ...         return True
     """
+
     @abstractmethod
     def validate(self, mhs: Mahasiswa) -> bool:
+        """Memvalidasi data mahasiswa berdasarkan aturan tertentu.
+
+        Args:
+            mhs: Objek Mahasiswa yang akan divalidasi.
+
+        Returns:
+            True jika validasi berhasil/lolos, False jika gagal.
+        """
         pass
 
 # === 2. IMPLEMENTASI KONKRIT (Langkah 2) ===
@@ -27,9 +50,9 @@ class SksLimitRule(IValidationRule):
     def validate(self, mhs: Mahasiswa) -> bool:
         MAX_SKS = 24
         if mhs.sks_diambil > MAX_SKS:
-            print(f"[GAGAL] {mhs.nama} mengambil {mhs.sks_diambil} SKS (Maks: {MAX_SKS}).")
+            LOGGER.warning(f"[GAGAL] {mhs.nama} mengambil {mhs.sks_diambil} SKS (Maks: {MAX_SKS}).")
             return False
-        print(f"[OK] SKS {mhs.sks_diambil} aman.")
+        LOGGER.info(f"[OK] SKS {mhs.sks_diambil} aman.")
         return True
 
 class PrerequisiteRule(IValidationRule):
@@ -37,34 +60,61 @@ class PrerequisiteRule(IValidationRule):
     def validate(self, mhs: Mahasiswa) -> bool:
         PRASYARAT = "Dasar Pemrograman"
         if PRASYARAT not in mhs.mata_kuliah_lulus:
-            print(f"[GAGAL] {mhs.nama} belum lulus {PRASYARAT}.")
+            LOGGER.warning(f"[GAGAL] {mhs.nama} belum lulus {PRASYARAT}.")
             return False
-        print(f"[OK] Prasyarat {PRASYARAT} terpenuhi.")
+        LOGGER.info(f"[OK] Prasyarat {PRASYARAT} terpenuhi.")
         return True
 
 # === 3. KELAS KOORDINATOR (Langkah 3: Implementasi SRP & DI) ===
 
 class RegistrationService:
+    """Layanan koordinasi validasi registrasi mahasiswa.
+
+    Service ini bertanggung jawab mengkoordinasi proses validasi
+    menggunakan aturan-aturan yang disuntikkan (Dependency Injection).
+    Mengikuti prinsip SRP dengan hanya fokus pada koordinasi validasi.
+
+    Attributes:
+        rules: Daftar aturan validasi yang akan dijalankan.
+
+    Example:
+        >>> rules = [SksLimitRule(), PrerequisiteRule()]
+        >>> service = RegistrationService(rules=rules)
+        >>> service.register_student(mahasiswa)
     """
-    Service ini hanya bertugas mengkoordinasi validasi.
-    Ia tidak tahu aturan apa saja yang dijalankan, ia hanya tahu
-    daftar aturan yang diberikan (Dependency Injection).
-    """
+
     def __init__(self, rules: List[IValidationRule]):
-        # Dependency Injection: Menerima daftar aturan via constructor
+        """Inisialisasi RegistrationService dengan daftar aturan validasi.
+
+        Args:
+            rules: Daftar implementasi IValidationRule yang akan digunakan
+                untuk memvalidasi registrasi mahasiswa.
+        """
         self.rules = rules
 
-    def register_student(self, mhs: Mahasiswa):
-        print(f"\n--- Memulai Validasi Registrasi untuk: {mhs.nama} ---")
+    def register_student(self, mhs: Mahasiswa) -> bool:
+        """Menjalankan proses registrasi mahasiswa.
+
+        Memvalidasi data mahasiswa menggunakan semua aturan yang telah
+        dikonfigurasi. Proses berhenti pada aturan pertama yang gagal.
+
+        Args:
+            mhs: Objek Mahasiswa yang akan diregistrasi.
+
+        Returns:
+            True jika semua validasi berhasil dan registrasi disetujui,
+            False jika ada validasi yang gagal.
+        """
+        LOGGER.info(f"Memulai Validasi Registrasi untuk: {mhs.nama}")
         
         # Loop semua aturan yang disuntikkan
         for rule in self.rules:
             is_valid = rule.validate(mhs)
             if not is_valid:
-                print("Status: REGISTRASI DITOLAK.")
+                LOGGER.warning("Status: REGISTRASI DITOLAK.")
                 return False
         
-        print("Status: REGISTRASI BERHASIL DISETUJUI.")
+        LOGGER.info("Status: REGISTRASI BERHASIL DISETUJUI.")
         return True
 
 # === 4. CHALLENGE: PEMBUKTIAN OCP (Langkah 4) ===
@@ -77,9 +127,9 @@ class JadwalBentrokRule(IValidationRule):
     """
     def validate(self, mhs: Mahasiswa) -> bool:
         if len(mhs.jadwal_krs) != len(set(mhs.jadwal_krs)):
-            print(f"[GAGAL] Terdeteksi jadwal bentrok pada KRS {mhs.nama}.")
+            LOGGER.warning(f"[GAGAL] Terdeteksi jadwal bentrok pada KRS {mhs.nama}.")
             return False
-        print(f"[OK] Tidak ada jadwal bentrok.")
+        LOGGER.info(f"[OK] Tidak ada jadwal bentrok.")
         return True
 
 
